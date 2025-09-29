@@ -1,0 +1,514 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "gpuType": "T4"
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    },
+    "accelerator": "GPU"
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "source": [
+        "Simple LSTM with audio_mnist"
+      ],
+      "metadata": {
+        "id": "tnYdWCq-08eI"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# use kaggle audio mnist (20/60)\n",
+        "# we need to make dataset class"
+      ],
+      "metadata": {
+        "id": "coDh9h3PQTSP"
+      },
+      "execution_count": 1,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "from google.colab import drive\n",
+        "drive.mount('/content/drive')"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "hQV-zjZ_RvCc",
+        "outputId": "8b6a6af0-ac2e-4207-adb4-c90483d0d3cc"
+      },
+      "execution_count": 2,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount(\"/content/drive\", force_remount=True).\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# check the data -> we need to make labels\n",
+        "import os\n",
+        "import torch\n",
+        "import torchaudio\n",
+        "path = '/content/drive/MyDrive/data'\n",
+        "dataset = []\n",
+        "for i in range(1,31):\n",
+        "  number = f'{i:02d}' # ex) 01\n",
+        "  audiofolder = os.path.join(path, number)\n",
+        "  for audio in os.listdir(audiofolder): # search all files in audiofolder\n",
+        "    audiopath = os.path.join(audiofolder, audio) # access to real audio data\n",
+        "    # In file name, there are label, speaker, repeat number\n",
+        "    filename = os.path.basename(audiopath)\n",
+        "    audioname = filename.replace('wav','')\n",
+        "    label = filename.split('_')[0]\n",
+        "    speaker = filename.split('_')[1]\n",
+        "    repeat = filename.split('_')[2]\n",
+        "    waveform, samplerate = torchaudio.load(audiopath)\n",
+        "    label = torch.tensor(int(label))\n",
+        "    dataset.append({'waveform':waveform, 'sr':samplerate,'speaker':speaker,'label':label})\n",
+        "  if i % 5 == 0:\n",
+        "    print(f'Label {i}/30 complete')\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "uKRhHrXWRwRH",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "096795de-48d4-47b6-e465-611d922d3d30"
+      },
+      "execution_count": 3,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "/usr/local/lib/python3.12/dist-packages/torchaudio/_backend/utils.py:213: UserWarning: In 2.9, this function's implementation will be changed to use torchaudio.load_with_torchcodec` under the hood. Some parameters like ``normalize``, ``format``, ``buffer_size``, and ``backend`` will be ignored. We recommend that you port your code to rely directly on TorchCodec's decoder instead: https://docs.pytorch.org/torchcodec/stable/generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder.\n",
+            "  warnings.warn(\n",
+            "/usr/local/lib/python3.12/dist-packages/torchaudio/_backend/ffmpeg.py:88: UserWarning: torio.io._streaming_media_decoder.StreamingMediaDecoder has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. \n",
+            "  s = torchaudio.io.StreamReader(src, format, None, buffer_size)\n"
+          ]
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Label 5/30 complete\n",
+            "Label 10/30 complete\n",
+            "Label 15/30 complete\n",
+            "Label 20/30 complete\n",
+            "Label 25/30 complete\n",
+            "Label 30/30 complete\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Watch data example\n",
+        "print(dataset[0])\n",
+        "print(len(dataset))"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "ym_nGKMWbe4q",
+        "outputId": "bb88ef39-75de-4c1b-90af-5e91e2a0e88c"
+      },
+      "execution_count": 4,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "{'waveform': tensor([[-0.0003, -0.0003, -0.0003,  ..., -0.0004, -0.0003, -0.0003]]), 'sr': 48000, 'speaker': '01', 'label': tensor(0)}\n",
+            "15000\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# I need to watch all the length of waveform is same\n",
+        "# To watch the length od tensor, use shape[1]. because tensor = 1*14073\n",
+        "A=[]\n",
+        "for i in range(len(dataset)):\n",
+        "  w = dataset[i]['waveform']\n",
+        "  A.append(w.shape[1])\n",
+        "print(f' Min : {min(A)}, Max: {max(A)}')"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "HKTDMPH7QwQh",
+        "outputId": "cbcb7c8e-4b5d-4d2d-e81d-20169a4cfa53"
+      },
+      "execution_count": 5,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            " Min : 14073, Max: 47935\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# So, I need to make same length -> 16KHz will be good. using nn.functional.pad\n",
+        "import torch.nn.functional as F\n",
+        "A=[]\n",
+        "for i in range(len(dataset)):\n",
+        "  w = dataset[i]['waveform']\n",
+        "  if w.shape[1] <20000:\n",
+        "    w =F.pad(w,(0,20000-w.shape[1])) # pad(x,(number, length to pad))\n",
+        "    dataset[i]['waveform'] = w[:,4000:20000]\n",
+        "  else:\n",
+        "    dataset[i]['waveform'] = w[:,4000:20000]\n",
+        "for i in range(len(dataset)):\n",
+        "  w = dataset[i]['waveform']\n",
+        "  A.append(w.shape[1])\n",
+        "print(f' Min : {min(A)}, Max: {max(A)}')"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "ksmsCQ-MS0Va",
+        "outputId": "8c56fa5e-7751-4eb1-d726-4bab1051947e"
+      },
+      "execution_count": 6,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            " Min : 16000, Max: 16000\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# make DATASET class to pytorch\n",
+        "from torch.utils.data import Dataset, DataLoader\n",
+        "\n",
+        "# make init,len,getitem\n",
+        "class audiodataset(Dataset):\n",
+        "  def __init__(self, files, transform = None):\n",
+        "    self.files = files\n",
+        "    self.transform = transform\n",
+        "\n",
+        "  def __len__(self):\n",
+        "    return len(self.files)\n",
+        "\n",
+        "  def __getitem__(self,idx): # Need idx!\n",
+        "    data = self.files[idx]\n",
+        "    waveform = data['waveform']\n",
+        "    label = data['label']\n",
+        "    # I don't need sr and speaker\n",
+        "    if self.transform:\n",
+        "      waveform = self.transform(waveform)\n",
+        "\n",
+        "    return waveform, label\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "G1qRAn8WcaHy"
+      },
+      "execution_count": 7,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Make dataloader\n",
+        "traindataset = audiodataset(dataset)\n",
+        "print(traindataset[0]) # waveform, label\n",
+        "train_loader = DataLoader(traindataset, batch_size = 32, shuffle = True)\n",
+        "for batch in train_loader:\n",
+        "  waveform, label = batch\n",
+        "  print(waveform.shape)\n",
+        "  print(label.shape)\n",
+        "  break # watch just one example"
+      ],
+      "metadata": {
+        "id": "7alrD6M2fOyt",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "591fc2ef-5d53-40a9-ad79-0d99bfc47c7b"
+      },
+      "execution_count": 8,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "(tensor([[-0.0004, -0.0004, -0.0002,  ...,  0.0085,  0.0085,  0.0087]]), tensor(0))\n",
+            "torch.Size([32, 1, 16000])\n",
+            "torch.Size([32])\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "aKqQ7h9naUGf"
+      },
+      "execution_count": 8,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# using GPU\n",
+        "if torch.cuda.is_available():\n",
+        "  device = torch.device('cuda')\n",
+        "  print('GPU is availble')\n",
+        "else:\n",
+        "  device = torch.device('cpu')\n",
+        "  print(f'YOU CANNOT NOT USE GPU!!!')\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "r_eMbEWDXvS8",
+        "outputId": "4fa7a391-33fe-4ab1-fdda-93e280a6109e"
+      },
+      "execution_count": 9,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "GPU is availble\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Make simple LSTM model\n",
+        "# the big difference of LSTM and RNN is Long term memory (cell state)\n",
+        "import torch.nn as nn\n",
+        "class LSTM(nn.Module):\n",
+        "  def __init__ (self, input_dim, hidden_size, num_layers, num_classes):\n",
+        "    super(LSTM, self).__init__()\n",
+        "    self.hidden_size = hidden_size\n",
+        "    self.num_layers = num_layers\n",
+        "    self.lstm = nn.LSTM(input_dim, hidden_size, num_layers)\n",
+        "    self.fc = nn.Linear(hidden_size, num_classes)\n",
+        "\n",
+        "  def forward(self, x):\n",
+        "    out, (hn,cn) = self.lstm(x) # last time hidden state, last time cell state\n",
+        "    out = self.fc(out[:,-1,:]) # need only last time step -> -1\n",
+        "    return out\n"
+      ],
+      "metadata": {
+        "id": "rHJwfzCKZ6do"
+      },
+      "execution_count": 10,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "model = LSTM(1,128, 2, 10)\n",
+        "criterion = nn.CrossEntropyLoss()\n",
+        "optimizer = torch.optim.Adam(model.parameters(),lr = 0.0001)\n",
+        "print(model)"
+      ],
+      "metadata": {
+        "id": "PDhEiwKbX5VI",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "e8b09903-be74-4457-c36a-2035d3aaa207"
+      },
+      "execution_count": 11,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "LSTM(\n",
+            "  (lstm): LSTM(1, 128, num_layers=2)\n",
+            "  (fc): Linear(in_features=128, out_features=10, bias=True)\n",
+            ")\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# training\n",
+        "epochs = 5\n",
+        "\n",
+        "for epoch in range(1,epochs+1):\n",
+        "  loss_epoch = 0\n",
+        "  accuracy_epoch = 0\n",
+        "\n",
+        "  for batch in train_loader:\n",
+        "    wave,label = batch\n",
+        "    # to into the LSTM, x should be [batch, seq_length, input_dim] but my waveform size is [batch, input_dim, seq_length] -> need to change\n",
+        "    wave = wave.transpose(1,2)\n",
+        "   # wave = wave.to(device)\n",
+        "   # label = label.to(device)\n",
+        "    optimizer.zero_grad()\n",
+        "    output = model(wave)\n",
+        "    loss = criterion(output,label)\n",
+        "    loss.backward()\n",
+        "    optimizer.step()\n",
+        "    loss_epoch += loss.item()\n",
+        "    y_pred = torch.argmax(output,dim=1)\n",
+        "    accuracy_epoch += (y_pred==label).sum().item()\n",
+        "\n",
+        "  loss_avg = loss_epoch/len(train_loader)\n",
+        "  accuracy_avg = accuracy_epoch/len(traindataset)\n",
+        "  print(f'Epoch : {epoch}, Loss : {loss_avg:10.8f}, Accuracy : {accuracy_avg:10.8f}')\n",
+        "\n"
+      ],
+      "metadata": {
+        "id": "3CpoZ0wSH6rc",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 356
+        },
+        "outputId": "a81fccd2-7f5c-4e82-9e51-d15d447f9e52"
+      },
+      "execution_count": 12,
+      "outputs": [
+        {
+          "output_type": "error",
+          "ename": "KeyboardInterrupt",
+          "evalue": "",
+          "traceback": [
+            "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+            "\u001b[0;31mKeyboardInterrupt\u001b[0m                         Traceback (most recent call last)",
+            "\u001b[0;32m/tmp/ipython-input-2388917289.py\u001b[0m in \u001b[0;36m<cell line: 0>\u001b[0;34m()\u001b[0m\n\u001b[1;32m     13\u001b[0m    \u001b[0;31m# label = label.to(device)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     14\u001b[0m     \u001b[0moptimizer\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mzero_grad\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 15\u001b[0;31m     \u001b[0moutput\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mmodel\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mwave\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     16\u001b[0m     \u001b[0mloss\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mcriterion\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0moutput\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0mlabel\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     17\u001b[0m     \u001b[0mloss\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mbackward\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\u001b[0m in \u001b[0;36m_wrapped_call_impl\u001b[0;34m(self, *args, **kwargs)\u001b[0m\n\u001b[1;32m   1771\u001b[0m             \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_compiled_call_impl\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0margs\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m**\u001b[0m\u001b[0mkwargs\u001b[0m\u001b[0;34m)\u001b[0m  \u001b[0;31m# type: ignore[misc]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1772\u001b[0m         \u001b[0;32melse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m-> 1773\u001b[0;31m             \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_call_impl\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0margs\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m**\u001b[0m\u001b[0mkwargs\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   1774\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1775\u001b[0m     \u001b[0;31m# torchrec tests the code consistency with the following code\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\u001b[0m in \u001b[0;36m_call_impl\u001b[0;34m(self, *args, **kwargs)\u001b[0m\n\u001b[1;32m   1782\u001b[0m                 \u001b[0;32mor\u001b[0m \u001b[0m_global_backward_pre_hooks\u001b[0m \u001b[0;32mor\u001b[0m \u001b[0m_global_backward_hooks\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1783\u001b[0m                 or _global_forward_hooks or _global_forward_pre_hooks):\n\u001b[0;32m-> 1784\u001b[0;31m             \u001b[0;32mreturn\u001b[0m \u001b[0mforward_call\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0margs\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m**\u001b[0m\u001b[0mkwargs\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   1785\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1786\u001b[0m         \u001b[0mresult\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/tmp/ipython-input-3781326639.py\u001b[0m in \u001b[0;36mforward\u001b[0;34m(self, x)\u001b[0m\n\u001b[1;32m     11\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     12\u001b[0m   \u001b[0;32mdef\u001b[0m \u001b[0mforward\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mself\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0mx\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m---> 13\u001b[0;31m     \u001b[0mout\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m(\u001b[0m\u001b[0mhn\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0mcn\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mlstm\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mx\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;31m# last time hidden state, last time cell state\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m     14\u001b[0m     \u001b[0mout\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0mfc\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0mout\u001b[0m\u001b[0;34m[\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m-\u001b[0m\u001b[0;36m1\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m]\u001b[0m\u001b[0;34m)\u001b[0m \u001b[0;31m# need only last time step -> -1\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m     15\u001b[0m     \u001b[0;32mreturn\u001b[0m \u001b[0mout\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\u001b[0m in \u001b[0;36m_wrapped_call_impl\u001b[0;34m(self, *args, **kwargs)\u001b[0m\n\u001b[1;32m   1771\u001b[0m             \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_compiled_call_impl\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0margs\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m**\u001b[0m\u001b[0mkwargs\u001b[0m\u001b[0;34m)\u001b[0m  \u001b[0;31m# type: ignore[misc]\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1772\u001b[0m         \u001b[0;32melse\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m-> 1773\u001b[0;31m             \u001b[0;32mreturn\u001b[0m \u001b[0mself\u001b[0m\u001b[0;34m.\u001b[0m\u001b[0m_call_impl\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0margs\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m**\u001b[0m\u001b[0mkwargs\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   1774\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1775\u001b[0m     \u001b[0;31m# torchrec tests the code consistency with the following code\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\u001b[0m in \u001b[0;36m_call_impl\u001b[0;34m(self, *args, **kwargs)\u001b[0m\n\u001b[1;32m   1782\u001b[0m                 \u001b[0;32mor\u001b[0m \u001b[0m_global_backward_pre_hooks\u001b[0m \u001b[0;32mor\u001b[0m \u001b[0m_global_backward_hooks\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1783\u001b[0m                 or _global_forward_hooks or _global_forward_pre_hooks):\n\u001b[0;32m-> 1784\u001b[0;31m             \u001b[0;32mreturn\u001b[0m \u001b[0mforward_call\u001b[0m\u001b[0;34m(\u001b[0m\u001b[0;34m*\u001b[0m\u001b[0margs\u001b[0m\u001b[0;34m,\u001b[0m \u001b[0;34m**\u001b[0m\u001b[0mkwargs\u001b[0m\u001b[0;34m)\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0m\u001b[1;32m   1785\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1786\u001b[0m         \u001b[0mresult\u001b[0m \u001b[0;34m=\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;32m/usr/local/lib/python3.12/dist-packages/torch/nn/modules/rnn.py\u001b[0m in \u001b[0;36mforward\u001b[0;34m(self, input, hx)\u001b[0m\n\u001b[1;32m   1122\u001b[0m \u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1123\u001b[0m         \u001b[0;32mif\u001b[0m \u001b[0mbatch_sizes\u001b[0m \u001b[0;32mis\u001b[0m \u001b[0;32mNone\u001b[0m\u001b[0;34m:\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[0;32m-> 1124\u001b[0;31m             result = _VF.lstm(\n\u001b[0m\u001b[1;32m   1125\u001b[0m                 \u001b[0minput\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n\u001b[1;32m   1126\u001b[0m                 \u001b[0mhx\u001b[0m\u001b[0;34m,\u001b[0m\u001b[0;34m\u001b[0m\u001b[0;34m\u001b[0m\u001b[0m\n",
+            "\u001b[0;31mKeyboardInterrupt\u001b[0m: "
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Without transform, it has very low accuracy\n",
+        "# Using MFCC\n",
+        "import torchaudio.transforms as T\n",
+        "mfcc = T.MFCC(16000,40) # sample_rate, dimension of vector of each frame-> feature\n",
+        "traindataset = audiodataset(dataset,transform = mfcc)\n",
+        "print(traindataset[0]) # waveform, label\n",
+        "train_loader = DataLoader(traindataset, batch_size = 32, shuffle = True)\n",
+        "for batch in train_loader:\n",
+        "  waveform, label = batch\n",
+        "  print(waveform.shape)\n",
+        "  print(label.shape)\n",
+        "  break # watch just one example"
+      ],
+      "metadata": {
+        "id": "HiukO-GsZL3P"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# make another model\n",
+        "model1 = LSTM(40,256, 2, 10)\n",
+        "criterion = nn.CrossEntropyLoss()\n",
+        "optimizer = torch.optim.Adam(model1.parameters(),lr = 0.0001)\n",
+        "print(model1)"
+      ],
+      "metadata": {
+        "id": "RQfUoeImev8E"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# to into the model, I need to change(batch, input_dim, seq_length)\n",
+        "# training\n",
+        "epochs = 5\n",
+        "\n",
+        "for epoch in range(1,epochs+1):\n",
+        "  loss_epoch = 0\n",
+        "  accuracy_epoch = 0\n",
+        "\n",
+        "  for batch in train_loader:\n",
+        "    wave,label = batch\n",
+        "    wave = wave.squeeze(1) # (batch, input_dim, seq_len)\n",
+        "    wave = wave.transpose(1,2) #(batch, seq_len. input_dim)\n",
+        "   # wave = wave.to(device)\n",
+        "   # label = label.to(device)\n",
+        "    optimizer.zero_grad()\n",
+        "    output = model1(wave)\n",
+        "    loss = criterion(output,label)\n",
+        "    loss.backward()\n",
+        "    optimizer.step()\n",
+        "    loss_epoch += loss.item()\n",
+        "    y_pred = torch.argmax(output,dim=1)\n",
+        "    accuracy_epoch += (y_pred==label).sum().item()\n",
+        "\n",
+        "  loss_avg = loss_epoch/len(train_loader)\n",
+        "  accuracy_avg = accuracy_epoch/len(traindataset)\n",
+        "  print(f'Epoch : {epoch}, Loss : {loss_avg:10.8f}, Accuracy : {accuracy_avg:10.8f}')"
+      ],
+      "metadata": {
+        "id": "f4PM96pOeHgf"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [],
+      "metadata": {
+        "id": "mD41Ma0ZUYyP"
+      },
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
